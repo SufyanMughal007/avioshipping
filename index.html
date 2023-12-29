@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.1/css/all.min.css">
+    <title>Shipping Cost Estimator</title>
+    <style>
+        /* Add custom styles here if needed */
+        body {
+            background-color: #f8f9fa;
+        }
+        .custom-form {
+            max-width: 800px;
+            margin: 50px auto;
+            background-color: #ffffff;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        .submit-btn {
+            width: 100%;
+            margin-top: 20px; /* Increase margin to create space between buttons */
+        }
+        .package-details-container {
+            margin-top: 20px;
+        }
+        .package-details-row {
+            display: flex;
+            margin-bottom: 10px;
+        }
+        .package-details-subfield {
+            flex: 1;
+            margin-right: 5px;
+        }
+        .delete-package-btn {
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="custom-form">
+        <h2 class="mb-4">Shipping Cost Estimator</h2>
+
+        <form id="shippingCostForm">
+            <div class="form-group">
+                <label for="originCountry">Origin Country</label>
+                <select class="form-control" id="originCountry" required>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="destinationCountry">Destination Country</label>
+                <select class="form-control" id="destinationCountry" required>
+                </select>
+            </div>
+
+            <div class="package-details-container">
+                <h4>Package Details</h4>
+                <div id="packageDetailsContainer">
+                    <!-- Default Package Details Row -->
+                    <div class="package-details-row">
+                        <div class="package-details-subfield">
+                            <select class="form-control number-of-packages" required>
+                                <option value="" selected>Select</option>
+                                <option value="1">1</option>
+                                <option value="2">2</option>
+                                <option value="3">3</option>
+                                <option value="4">4</option>
+                                <option value="5">5</option>
+                                <option value="6">6</option>
+                                <option value="7">7</option>
+                                <option value="8">8</option>
+                                <option value="9">9</option>
+                                <option value="10">10</option>
+                                <option value="11">11</option>
+                                <option value="12">12</option>
+                                <option value="13">13</option>
+                                <option value="14">14</option>
+                            </select>
+                        </div>
+                        <div class="package-details-subfield">
+                            <input type="text" class="form-control weight-per-package" placeholder="Weight per Package (in Kgs)" required>
+                        </div>
+                        <div class="package-details-subfield">
+                            <input type="text" class="form-control package-length" placeholder="Length (in Ft.)" required>
+                        </div>
+                        <div class="package-details-subfield">
+                            <input type="text" class="form-control package-width" placeholder="Width (in Ft.)" required>
+                        </div>
+                        <div class="package-details-subfield">
+                            <input type="text" class="form-control package-height" placeholder="Height (in Ft.)" required>
+                        </div>
+                        <!-- Disabled delete button for the default row -->
+                        <button type="button" class="btn btn-danger delete-package-btn" disabled>
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </div>
+                <button type="button" class="btn btn-success add-package-btn" id="addPackageBtn">
+                    <i class="fas fa-plus"></i> Add Package
+                </button>
+            </div>
+
+            <button type="submit" class="btn btn-primary submit-btn">Calculate Shipping Cost</button>
+
+            <!-- Display the shipping cost result -->
+            <div id="result" class="mt-4"></div>
+        </form>
+    </div>
+</div>
+
+<script src="https://code.jquery.com/jquery-3.3.1.slim.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js"></script>
+<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js"></script>
+<script>
+    // Haversine formula to calculate distance
+    function calculateDistance(lat1, lon1, lat2, lon2) {
+        const R = 6371; // Radius of the Earth in km
+        const dLat = (lat2 - lat1) * Math.PI / 180;
+        const dLon = (lon2 - lon1) * Math.PI / 180;
+        const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                  Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                  Math.sin(dLon/2) * Math.sin(dLon/2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        return R * c; // Distance in km
+    }
+
+    // Fetch country names and coordinates, then populate the dropdowns
+    fetch('https://restcountries.com/v3.1/all')
+        .then(response => response.json())
+        .then(data => {
+            const countries = data.map(country => ({
+                name: country.name.common,
+                latlng: country.capitalInfo.latlng
+            })).sort((a, b) => a.name.localeCompare(b.name));
+
+            // Populate the origin and destination dropdowns
+            const originSelect = document.getElementById('originCountry');
+            const destinationSelect = document.getElementById('destinationCountry');
+            countries.forEach(country => {
+                originSelect.add(new Option(country.name, JSON.stringify(country.latlng)));
+                destinationSelect.add(new Option(country.name, JSON.stringify(country.latlng)));
+            });
+        })
+        .catch(error => console.error('Error fetching countries:', error));
+
+    // Event listener for form submission
+    document.getElementById('shippingCostForm').addEventListener('submit', function(event) {
+        event.preventDefault();
+
+        // Calculate the total shipping cost
+        const totalShippingCost = calculateTotalShippingCost();
+
+        // Display the result
+        const resultElement = document.getElementById('result');
+        resultElement.innerHTML = `<div class="alert alert-success">Total Shipping Cost: $${totalShippingCost.toFixed(2)}</div>`;
+    });
+
+    // Event listener for adding a new package
+    document.getElementById('addPackageBtn').addEventListener('click', function() {
+        addPackageRow();
+    });
+
+    // Event listener for deleting a package
+    document.getElementById('packageDetailsContainer').addEventListener('click', function(event) {
+        if (event.target.classList.contains('delete-package-btn')) {
+            deletePackageRow(event.target.closest('.package-details-row'));
+        }
+    });
+
+    // Function to get package details entered by the user
+    function getPackageDetails() {
+        const packageDetails = [];
+
+        // Iterate through each package details row
+        document.querySelectorAll('.package-details-row').forEach(row => {
+            const numberOfPackages = row.querySelector('.number-of-packages').value;
+            const weightPerPackage = row.querySelector('.weight-per-package').value;
+            const length = row.querySelector('.package-length').value;
+            const width = row.querySelector('.package-width').value;
+            const height = row.querySelector('.package-height').value;
+
+            packageDetails.push({
+                numberOfPackages,
+                weightPerPackage,
+                length,
+                width,
+                height
+            });
+        });
+
+        return packageDetails;
+    }
+
+    // Function to add a new package row
+    function addPackageRow() {
+        const packageDetailsContainer = document.getElementById('packageDetailsContainer');
+
+        // Create a new package details row
+        const newRow = document.createElement('div');
+        newRow.className = 'package-details-row';
+
+        newRow.innerHTML = `
+            <div class="package-details-subfield">
+                <select class="form-control number-of-packages" required>
+                    ${generateNumbersDropdown(1, 14)}
+                </select>
+            </div>
+            <div class="package-details-subfield">
+                <input type="text" class="form-control weight-per-package" placeholder="Weight per Package (in Kgs)" required>
+            </div>
+            <div class="package-details-subfield">
+                <input type="text" class="form-control package-length" placeholder="Length (in Ft.)" required>
+            </div>
+            <div class="package-details-subfield">
+                <input type="text" class="form-control package-width" placeholder="Width (in Ft.)" required>
+            </div>
+            <div class="package-details-subfield">
+                <input type="text" class="form-control package-height" placeholder="Height (in Ft.)" required>
+            </div>
+            <button type="button" class="btn btn-danger delete-package-btn">
+                <i class="fas fa-trash"></i>
+            </button>
+        `;
+
+        // Append the new row to the container
+        packageDetailsContainer.appendChild(newRow);
+    }
+
+    // Function to delete a package row
+    function deletePackageRow(row) {
+        const packageDetailsContainer = document.getElementById('packageDetailsContainer');
+        packageDetailsContainer.removeChild(row);
+    }
+
+    // Function to generate a dropdown with numbers from start to end
+    function generateNumbersDropdown(start, end) {
+        let options = '<option value="" selected>Select</option>';
+        for (let i = start; i <= end; i++) {
+            options += `<option value="${i}">${i}</option>`;
+        }
+        return options;
+    }
+
+    // Function to calculate shipping cost for a single package row
+    function calculatePackageCost(packageDetails, originCoordinates, destinationCoordinates) {
+        // Extract package details
+        const numberOfPackages = parseFloat(packageDetails.numberOfPackages);
+        const weightPerPackage = parseFloat(packageDetails.weightPerPackage);
+        const length = parseFloat(packageDetails.length);
+        const width = parseFloat(packageDetails.width);
+        const height = parseFloat(packageDetails.height);
+
+        // Calculate volumetric weight (in kg) using the formula: (Length * Width * Height) / 5000
+        const volumetricWeight = (length * width * height) / 5000;
+
+        // Determine the weight to use for calculation (user entered or volumetric)
+        const weightToUse = Math.max(weightPerPackage, volumetricWeight);
+
+        // Calculate the shipping cost using the provided formula
+        // Note: You need to implement the distance calculation using the Haversine formula here.
+        const distance = calculateDistance(originCoordinates[0], originCoordinates[1], destinationCoordinates[0], destinationCoordinates[1]);
+        let shippingCost = (distance / 1000) * weightToUse * numberOfPackages;
+
+        // Apply discounts based on weight ranges
+        if (weightToUse >= 1 && weightToUse <= 25) {
+            shippingCost *= 0.85; // 15% discount
+        } else if (weightToUse >= 26 && weightToUse <= 68) {
+            shippingCost *= 0.7; // 30% discount
+        } else if (weightToUse >= 69 && weightToUse <= 999) {
+            shippingCost *= 0.55; // 45% discount
+        }
+
+        return shippingCost;
+    }
+
+        // Function to calculate the total shipping cost for all package rows
+        function calculateTotalShippingCost() {
+            const originCoordinates = JSON.parse(document.getElementById('originCountry').value);
+            const destinationCoordinates = JSON.parse(document.getElementById('destinationCountry').value);
+            const packageDetails = getPackageDetails();
+            let totalCost = 0;
+
+            packageDetails.forEach(package => {
+                totalCost += calculatePackageCost(package, originCoordinates, destinationCoordinates);
+        });
+
+    return totalCost;
+    }
+
+// Event listener for form submission
+document.getElementById('shippingCostForm').addEventListener('submit', function(event) {
+    event.preventDefault();
+
+    // Calculate the total shipping cost
+    const totalShippingCost = calculateTotalShippingCost();
+
+    // Display the result
+    const resultElement = document.getElementById('result');
+    resultElement.innerHTML = `<div class="alert alert-success">Total Shipping Cost: $${totalShippingCost.toFixed(2)}</div>`;
+    });
+
+</script>
+
+</body>
+</html>
