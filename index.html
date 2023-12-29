@@ -7,7 +7,6 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.1/css/all.min.css">
     <title>Shipping Cost Estimator</title>
     <style>
-        /* Add custom styles here if needed */
         body {
             background-color: #f8f9fa;
         }
@@ -21,7 +20,7 @@
         }
         .submit-btn {
             width: 100%;
-            margin-top: 20px; /* Increase margin to create space between buttons */
+            margin-top: 20px;
         }
         .package-details-container {
             margin-top: 20px;
@@ -61,25 +60,11 @@
             <div class="package-details-container">
                 <h4>Package Details</h4>
                 <div id="packageDetailsContainer">
-                    <!-- Default Package Details Row -->
                     <div class="package-details-row">
                         <div class="package-details-subfield">
                             <select class="form-control number-of-packages" required>
                                 <option value="" selected>Select</option>
-                                <option value="1">1</option>
-                                <option value="2">2</option>
-                                <option value="3">3</option>
-                                <option value="4">4</option>
-                                <option value="5">5</option>
-                                <option value="6">6</option>
-                                <option value="7">7</option>
-                                <option value="8">8</option>
-                                <option value="9">9</option>
-                                <option value="10">10</option>
-                                <option value="11">11</option>
-                                <option value="12">12</option>
-                                <option value="13">13</option>
-                                <option value="14">14</option>
+                                <!-- Options will be added here -->
                             </select>
                         </div>
                         <div class="package-details-subfield">
@@ -94,7 +79,6 @@
                         <div class="package-details-subfield">
                             <input type="text" class="form-control package-height" placeholder="Height (in Ft.)" required>
                         </div>
-                        <!-- Disabled delete button for the default row -->
                         <button type="button" class="btn btn-danger delete-package-btn" disabled>
                             <i class="fas fa-trash"></i>
                         </button>
@@ -106,8 +90,6 @@
             </div>
 
             <button type="submit" class="btn btn-primary submit-btn">Calculate Shipping Cost</button>
-
-            <!-- Display the shipping cost result -->
             <div id="result" class="mt-4"></div>
         </form>
     </div>
@@ -117,6 +99,18 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js"></script>
 <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js"></script>
 <script>
+    // Global variable to store user's location
+    let userLocation = '';
+
+    // Fetch user's location based on IP address
+    fetch('https://ipapi.co/json/')
+        .then(response => response.json())
+        .then(data => {
+            userLocation = data.country_name;
+            console.log("User is located in:", userLocation);
+        })
+        .catch(error => console.error('Error fetching user location:', error));
+
     // Haversine formula to calculate distance
     function calculateDistance(lat1, lon1, lat2, lon2) {
         const R = 6371; // Radius of the Earth in km
@@ -135,48 +129,98 @@
         .then(data => {
             const countries = data.map(country => ({
                 name: country.name.common,
-                latlng: country.capitalInfo.latlng
+                latlng: country.latlng
             })).sort((a, b) => a.name.localeCompare(b.name));
 
-            // Populate the origin and destination dropdowns
             const originSelect = document.getElementById('originCountry');
             const destinationSelect = document.getElementById('destinationCountry');
             countries.forEach(country => {
                 originSelect.add(new Option(country.name, JSON.stringify(country.latlng)));
                 destinationSelect.add(new Option(country.name, JSON.stringify(country.latlng)));
             });
+
+            // Populate the number of packages dropdown
+            populateNumbersDropdown();
         })
         .catch(error => console.error('Error fetching countries:', error));
 
-    // Event listener for form submission
-    document.getElementById('shippingCostForm').addEventListener('submit', function(event) {
-        event.preventDefault();
+    // Function to populate the number of packages dropdown
+    function populateNumbersDropdown() {
+        document.querySelectorAll('.number-of-packages').forEach(select => {
+            for (let i = 1; i <= 14; i++) {
+                select.add(new Option(i, i));
+            }
+        });
+    }
 
-        // Calculate the total shipping cost
-        const totalShippingCost = calculateTotalShippingCost();
+    // Function to calculate shipping cost for a single package row
+    function calculatePackageCost(packageDetails, originCoordinates, destinationCoordinates) {
+        const numberOfPackages = parseFloat(packageDetails.numberOfPackages);
+        const weightPerPackage = parseFloat(packageDetails.weightPerPackage);
+        const length = parseFloat(packageDetails.length);
+        const width = parseFloat(packageDetails.width);
+        const height = parseFloat(packageDetails.height);
 
-        // Display the result
-        const resultElement = document.getElementById('result');
-        resultElement.innerHTML = `<div class="alert alert-success">Total Shipping Cost: $${totalShippingCost.toFixed(2)}</div>`;
-    });
+        const volumetricWeight = (length * width * height) / 5000;
+        const weightToUse = Math.max(weightPerPackage, volumetricWeight);
 
-    // Event listener for adding a new package
-    document.getElementById('addPackageBtn').addEventListener('click', function() {
-        addPackageRow();
-    });
+        const distance = calculateDistance(originCoordinates[0], originCoordinates[1], destinationCoordinates[0], destinationCoordinates[1]);
+        let originalCost = (distance / 1000) * weightToUse * numberOfPackages;
 
-    // Event listener for deleting a package
-    document.getElementById('packageDetailsContainer').addEventListener('click', function(event) {
-        if (event.target.classList.contains('delete-package-btn')) {
-            deletePackageRow(event.target.closest('.package-details-row'));
+        let discountedCost = originalCost;
+        switch (userLocation) {
+            case 'United States':
+                discountedCost *= 0.70; // 30% discount for USA
+                break;
+            case 'Canada':
+                discountedCost *= 0.75; // 25% discount for Canada
+                break;
+            default:
+                if (isEuropeanCountry(userLocation)) {
+                    discountedCost *= 0.65; // 35% discount for European countries
+                }
         }
-    });
+
+        return {
+            originalCost: originalCost,
+            discountedCost: discountedCost
+        };
+    }
+
+    // Function to calculate the total shipping cost for all package rows
+    function calculateTotalShippingCost() {
+        const originCoordinates = JSON.parse(document.getElementById('originCountry').value);
+        const destinationCoordinates = JSON.parse(document.getElementById('destinationCountry').value);
+        const packageDetails = getPackageDetails();
+        let totalOriginalCost = 0;
+        let totalDiscountedCost = 0;
+
+        packageDetails.forEach(package => {
+            const cost = calculatePackageCost(package, originCoordinates, destinationCoordinates);
+            totalOriginalCost += cost.originalCost;
+            totalDiscountedCost += cost.discountedCost;
+        });
+
+        displayCost(totalOriginalCost, totalDiscountedCost);
+    }
+
+    // Function to display the cost information
+    function displayCost(originalCost, discountedCost) {
+        const resultElement = document.getElementById('result');
+        let discountMessage = userLocation ? `Discount applied based on your location: ${userLocation}` : 'No discount applied';
+        
+        resultElement.innerHTML = `
+            <div>
+                <div>Original Shipping Cost: <s>$${originalCost.toFixed(2)}</s></div>
+                <div>Discounted Shipping Cost: $${discountedCost.toFixed(2)}</div>
+                <div>${discountMessage}</div>
+            </div>
+        `;
+    }
 
     // Function to get package details entered by the user
     function getPackageDetails() {
         const packageDetails = [];
-
-        // Iterate through each package details row
         document.querySelectorAll('.package-details-row').forEach(row => {
             const numberOfPackages = row.querySelector('.number-of-packages').value;
             const weightPerPackage = row.querySelector('.weight-per-package').value;
@@ -199,15 +243,15 @@
     // Function to add a new package row
     function addPackageRow() {
         const packageDetailsContainer = document.getElementById('packageDetailsContainer');
-
-        // Create a new package details row
         const newRow = document.createElement('div');
         newRow.className = 'package-details-row';
 
         newRow.innerHTML = `
             <div class="package-details-subfield">
                 <select class="form-control number-of-packages" required>
-                    ${generateNumbersDropdown(1, 14)}
+                    <option value="" selected>Select</option>
+                    <!-- Options 1 to 14 -->
+                    ${Array.from({ length: 14 }, (_, i) => `<option value="${i + 1}">${i + 1}</option>`).join('')}
                 </select>
             </div>
             <div class="package-details-subfield">
@@ -227,7 +271,6 @@
             </button>
         `;
 
-        // Append the new row to the container
         packageDetailsContainer.appendChild(newRow);
     }
 
@@ -237,74 +280,23 @@
         packageDetailsContainer.removeChild(row);
     }
 
-    // Function to generate a dropdown with numbers from start to end
-    function generateNumbersDropdown(start, end) {
-        let options = '<option value="" selected>Select</option>';
-        for (let i = start; i <= end; i++) {
-            options += `<option value="${i}">${i}</option>`;
+    // Helper function to check if a country is in Europe
+    function isEuropeanCountry(country) {
+        const europeanCountries = ["Albania", "Andorra", "Armenia", "Austria", "Azerbaijan", "Belarus", "Belgium", "Bosnia and Herzegovina", "Bulgaria", "Croatia", "Cyprus", "Czech Republic", "Denmark", "Estonia", "Finland", "France", "Georgia", "Germany", "Greece", "Hungary", "Iceland", "Ireland", "Italy", "Kazakhstan", "Kosovo", "Latvia", "Liechtenstein", "Lithuania", "Luxembourg", "Malta", "Moldova", "Monaco", "Montenegro", "Netherlands", "North Macedonia", "Norway", "Poland", "Portugal", "Romania", "Russia", "San Marino", "Serbia", "Slovakia", "Slovenia", "Spain", "Sweden", "Switzerland", "Turkey", "Ukraine", "United Kingdom", "Vatican City"];
+        return europeanCountries.includes(country);
+    }
+
+    // Event listeners and other initialization code
+    document.getElementById('addPackageBtn').addEventListener('click', addPackageRow);
+    document.getElementById('packageDetailsContainer').addEventListener('click', function(event) {
+        if (event.target.classList.contains('delete-package-btn')) {
+            deletePackageRow(event.target.closest('.package-details-row'));
         }
-        return options;
-    }
-
-    // Function to calculate shipping cost for a single package row
-    function calculatePackageCost(packageDetails, originCoordinates, destinationCoordinates) {
-        // Extract package details
-        const numberOfPackages = parseFloat(packageDetails.numberOfPackages);
-        const weightPerPackage = parseFloat(packageDetails.weightPerPackage);
-        const length = parseFloat(packageDetails.length);
-        const width = parseFloat(packageDetails.width);
-        const height = parseFloat(packageDetails.height);
-
-        // Calculate volumetric weight (in kg) using the formula: (Length * Width * Height) / 5000
-        const volumetricWeight = (length * width * height) / 5000;
-
-        // Determine the weight to use for calculation (user entered or volumetric)
-        const weightToUse = Math.max(weightPerPackage, volumetricWeight);
-
-        // Calculate the shipping cost using the provided formula
-        // Note: You need to implement the distance calculation using the Haversine formula here.
-        const distance = calculateDistance(originCoordinates[0], originCoordinates[1], destinationCoordinates[0], destinationCoordinates[1]);
-        let shippingCost = (distance / 1000) * weightToUse * numberOfPackages;
-
-        // Apply discounts based on weight ranges
-        if (weightToUse >= 1 && weightToUse <= 25) {
-            shippingCost *= 0.85; // 15% discount
-        } else if (weightToUse >= 26 && weightToUse <= 68) {
-            shippingCost *= 0.7; // 30% discount
-        } else if (weightToUse >= 69 && weightToUse <= 999) {
-            shippingCost *= 0.55; // 45% discount
-        }
-
-        return shippingCost;
-    }
-
-        // Function to calculate the total shipping cost for all package rows
-        function calculateTotalShippingCost() {
-            const originCoordinates = JSON.parse(document.getElementById('originCountry').value);
-            const destinationCoordinates = JSON.parse(document.getElementById('destinationCountry').value);
-            const packageDetails = getPackageDetails();
-            let totalCost = 0;
-
-            packageDetails.forEach(package => {
-                totalCost += calculatePackageCost(package, originCoordinates, destinationCoordinates);
-        });
-
-    return totalCost;
-    }
-
-// Event listener for form submission
-document.getElementById('shippingCostForm').addEventListener('submit', function(event) {
-    event.preventDefault();
-
-    // Calculate the total shipping cost
-    const totalShippingCost = calculateTotalShippingCost();
-
-    // Display the result
-    const resultElement = document.getElementById('result');
-    resultElement.innerHTML = `<div class="alert alert-success">Total Shipping Cost: $${totalShippingCost.toFixed(2)}</div>`;
     });
-
+    document.getElementById('shippingCostForm').addEventListener('submit', function(event) {
+        event.preventDefault();
+        calculateTotalShippingCost();
+    });
 </script>
-
 </body>
 </html>
